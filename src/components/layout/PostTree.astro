@@ -1,0 +1,217 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { getPostUrlBySlug, removeFileExtension } from "@utils/url-utils";
+
+interface Props {
+	posts: CollectionEntry<"posts">[];
+	activeSlug?: string;
+}
+
+const { posts, activeSlug = "" } = Astro.props;
+
+interface MonthGroup {
+	key: string;
+	label: string;
+	posts: CollectionEntry<"posts">[];
+}
+
+/** 按年月分组 */
+function groupByMonth(list: CollectionEntry<"posts">[]): MonthGroup[] {
+	const map = new Map<string, CollectionEntry<"posts">[]>();
+	for (const p of list) {
+		const d = p.data.published;
+		const key = d
+			? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+			: "未分类";
+		if (!map.has(key)) map.set(key, []);
+		map.get(key)!.push(p);
+	}
+
+	const sorted = Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+	return sorted.map(([key, items]) => {
+		const [year, month] = key.split("-");
+		const label = key === "未分类" ? "未分类" : `${year}年${parseInt(month)}月`;
+		return { key, label, posts: items };
+	});
+}
+
+const groups = groupByMonth(posts);
+
+function escapeHtml(s: string): string {
+	return s.replace(/[&<>"']/g, (c) => {
+		switch (c) {
+			case "&": return "&amp;";
+			case "<": return "&lt;";
+			case ">": return "&gt;";
+			case '"': return "&quot;";
+			default: return "&#39;";
+		}
+	});
+}
+
+function isActive(post: CollectionEntry<"posts">): boolean {
+	return activeSlug ? post.id === activeSlug : false;
+}
+
+function isOpen(group: MonthGroup): boolean {
+	if (!activeSlug) return false;
+	return group.posts.some((p) => p.id === activeSlug);
+}
+---
+
+<nav class="post-tree">
+	<div class="pt-tree-h">文章目录</div>
+	<ul class="pt-list">
+		{groups.map((g) => {
+			const open = isOpen(g);
+			return (
+			<li class="pt-folder-item">
+				<details class={`pt-folder${open ? " open" : ""}`}>
+					<summary class="pt-summary">
+						<span class="pt-ico">📅</span>
+						<span class="pt-name">{g.label}</span>
+						<span class="pt-count">{g.posts.length}</span>
+						<span class="pt-caret">▸</span>
+					</summary>
+					<ul class="pt-children">
+						{g.posts.map((p) => {
+							const url = getPostUrlBySlug(p.id);
+							const active = isActive(p);
+							return (
+								<li class={`pt-post-item${active ? " is-active" : ""}`}>
+									<a href={url} class={`pt-link${active ? " is-active" : ""}`}>
+										<span class="pt-bullet">·</span>
+										{escapeHtml(p.data.title)}
+									</a>
+								</li>
+							);
+						})}
+					</ul>
+				</details>
+			</li>
+			);
+		})}
+	</ul>
+</nav>
+
+<style>
+	.post-tree {
+		font-size: 0.9rem;
+		line-height: 1.6;
+		user-select: none;
+	}
+	.pt-tree-h {
+		font-weight: 700;
+		font-size: 0.85rem;
+		color: var(--content-strong, #222);
+		margin-bottom: 0.6rem;
+		padding-bottom: 0.4rem;
+		border-bottom: 1px solid var(--line-divider, rgba(128, 128, 128, 0.2));
+	}
+	.pt-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	/* 子级缩进 + 连接线 */
+	.pt-folder-item > .pt-folder > .pt-children {
+		margin-left: 0.5rem;
+		padding-left: 0.45rem;
+		border-left: 1px dashed var(--line-divider, rgba(128, 128, 128, 0.28));
+	}
+
+	/* ── summary（月份标题行）── */
+	.pt-summary {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		cursor: pointer;
+		padding: 0.22rem 0.4rem;
+		border-radius: 0.45rem;
+		color: var(--content-strong, #222);
+		font-weight: 600;
+		list-style: none;
+		transition: background 0.15s ease;
+	}
+	.pt-summary::-webkit-details-marker {
+		display: none;
+	}
+	.pt-summary:hover {
+		background: rgba(128, 128, 128, 0.1);
+	}
+	.pt-ico {
+		flex-shrink: 0;
+		font-size: 0.85em;
+		transition: transform 0.25s ease;
+	}
+	.pt-folder[open] > .pt-summary .pt-ico {
+		transform: scale(1.1);
+	}
+	.pt-name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.pt-count {
+		flex-shrink: 0;
+		font-size: 0.7rem;
+		color: var(--content-meta, #999);
+		background: rgba(128, 128, 128, 0.12);
+		padding: 0 0.38rem;
+		border-radius: 0.8rem;
+		line-height: 1.5;
+	}
+	.pt-caret {
+		flex-shrink: 0;
+		transition: transform 0.25s ease;
+		font-size: 0.65rem;
+		opacity: 0.55;
+	}
+	.pt-folder[open] > .pt-summary .pt-caret {
+		transform: rotate(90deg);
+	}
+
+	/* ── 文章链接列表 ── */
+	.pt-children {
+		list-style: none;
+		margin: 0;
+		padding: 0.15rem 0;
+	}
+	.pt-post-item {
+		margin: 0;
+	}
+	.pt-link {
+		display: block;
+		padding: 0.18rem 0.35rem 0.18rem 1.15rem;
+		border-radius: 0.4rem;
+		color: var(--content, #444);
+		text-decoration: none;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		transition: color 0.15s, background 0.15s, padding-left 0.15s;
+	}
+	.pt-link:hover {
+		background: rgba(128, 128, 128, 0.1);
+		color: var(--primary, #6b8cff);
+		padding-left: 1.35rem;
+	}
+	.pt-link.is-active,
+	.pt-post-item.is-active .pt-link {
+		background: color-mix(in srgb, var(--primary, #6b8cff) 18%, transparent);
+		color: var(--primary, #6b8cff);
+		font-weight: 600;
+	}
+	.pt-bullet {
+		margin-right: 0.25rem;
+		opacity: 0.35;
+	}
+
+	/* 展开折叠动画 */
+	.pt-folder > .pt-children {
+		overflow: hidden;
+		transition: max-height 0.3s ease, opacity 0.2s ease;
+	}
+</style>

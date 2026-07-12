@@ -1,0 +1,39 @@
+
+== nature: 已有 2, 还需 16 ==
+  候选 16 个
+  [dl err] File:Sand and gravel landscape now nature reserve. - geograph.org.uk - 509227.jpg too small (2277)
+  [dl err] File:Nordkirchen, Naturschutzgebiet Ichterloh -- 2018 -- 2131-7.jpg too small (2211)
+  [dl err] File:Кам'яні могили, зима 02.jpg too small (2211)
+  本类新增 13，现共 15
+
+== tech: 已有 0, 还需 18 ==
+  候选 18 个
+  [dl err] File:Moscow International Business Centre, Marc 2008.JPG too small (2211)
+  [dl err] File:Tampa Florida November 2013-2b.jpg too small (2212)
+  [dl err] File:Los Angeles (California, USA), South Olive Street -- 2012 -- 4847.jpg too small (2211)
+  [dl err] File:Victoria Harbour skyscrapers.jpg too small (2211)
+  [dl err] File:Igreja de Nossa Senhora do Rosário dos Homens Pretos, São Paulo.jpg too small (1987)
+  本类新增 13，现共 13
+
+== scifi: 已有 14, 还需 2 ==
+  候选 2 个
+  [dl err] File:Science fiction women.jpg Command failed: curl -sL --max-time 60 -A PersonalWebsiteCoverFetcher/1.0 https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Science_fiction_women.jpg/1280px-Science_fiction_women.jpg
+  本类新增 1，现共 15
+
+== humanity: 已有 14, 还需 2 ==
+  候选 2 个
+  本类新增 2，现共 16
+
+== portrait: 已有 9, 还需 3 ==
+  候选 3 个
+  本类新增 3，现共 12
+
+=== 最终图库 ===
+{
+  "humanity": 16,
+  "nature": 15,
+  "portrait": 12,
+  "scifi": 15,
+  "tech": 13
+}
+本次新增 32 张 -> D:\Codes\personal-website\public\covers

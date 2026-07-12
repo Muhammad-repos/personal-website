@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>封面画廊 v3 — portrait 替换 + 壁纸重建</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#111;color:#e0e0e0;font-family:system-ui,sans-serif;padding:20px}
+h1,h2{margin:16px 0 12px}
+h1{color:#fff;font-size:1.6em}
+h2{color:#aaa;font-size:1.2em;border-left:3px solid #666;padding-left:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:30px}
+.card{background:#1a1a1a;border-radius:8px;overflow:hidden}
+.card img{width:100%;height:200px;object-fit:cover;display:block}
+.card .info{padding:8px 10px;font-size:.82em;display:flex;justify-content:space-between;color:#999}
+.card .info b{color:#ddd}
+.tag-portrait{border-top:2px solid #e88}
+.tag-wallpaper{border-top:2px solid #4a8}
+.badge{font-size:.7em;padding:1px 6px;border-radius:4px;background:#333;color:#ccc}
+</style>
+</head>
+<body>
+<h1>封面画廊 v3 — portrait 全替换（mn 唯美源）+ wallpaper 已删除 + 壁纸重建</h1>
+<p style="color:#888;margin-bottom:16px">portrait：01-15 来自 pic.ltywl.top/mn（唯美人物），16 为用户自选 | 壁纸：landscape×5 + nature×4 + portrait(03,16) | scifi/tech 保留凑合用</p>
+
+<h2>📷 Portrait（唯美人物）— 16 张</h2>
+<div class="grid" id="portrait-grid"></div>
+
+<h2>🖥️ 桌面壁纸 — 11 张</h2>
+<div class="grid" id="wallpaper-grid"></div>
+
+<script>
+const covers = [
+'landscape-01','landscape-04','landscape-11','landscape-13','landscape-20',
+'nature-04','nature-05','nature-08','nature-14',
+'portrait-03','portrait-16'
+];
+const pg=document.getElementById('portrait-grid');
+for(let i=1;i<=16;i++){
+ const n=String(i).padStart(2,'0');
+ const d=document.createElement('div');d.className='card tag-portrait';
+ d.innerHTML=`<img src="/covers/portrait-${n}.jpg" alt="portrait-${n}" loading="lazy">
+ <div class="info"><b>portrait-${n}</b><span class="badge">${i===16?'用户自选':'mn源'}</span></div>`;
+ pg.appendChild(d);
+}
+const wg=document.getElementById('wallpaper-grid');
+covers.forEach(n=>{
+ const d=document.createElement('div');d.className='card tag-wallpaper';
+ d.innerHTML=`<img src="/covers/${n}.jpg" alt="${n}" loading="lazy">
+ <div class="info"><b>${n}</b><span class="badge">壁纸</span></div>`;
+ wg.appendChild(d);
+});
+</script>
+</body>
+</html>

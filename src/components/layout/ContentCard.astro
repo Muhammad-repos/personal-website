@@ -1,0 +1,123 @@
+---
+import { Icon } from "astro-icon/components";
+
+interface Props {
+	title: string;
+	url: string;
+	dateLabel?: string | null;
+	tags?: string[];
+	excerpt?: string;
+	kind?: "note" | "post";
+	class?: string;
+}
+const { title, url, dateLabel, tags = [], excerpt, kind = "note", class: className } = Astro.props;
+const shownTags = tags.slice(0, 5);
+---
+
+<div
+  class:list={[
+    "content-card-wrapper",
+    "card-base flex w-full rounded-(--radius-large) overflow-hidden relative",
+    className,
+  ]}
+>
+  <div
+    class="content-card-content pl-4 md:pl-6 pr-4 md:pr-16 py-4 md:py-5 relative flex flex-col h-full grow min-w-0"
+  >
+    <a
+      href={url}
+      class="content-card-title transition group w-full block font-bold mb-2 text-2xl md:text-3xl text-90
+        hover:text-(--primary) dark:hover:text-(--primary)
+        active:text-(--title-active) dark:active:text-(--title-active)
+        before:w-1 before:h-5 before:rounded-md before:bg-(--primary)
+        before:absolute before:top-[26px] before:left-[14px] before:hidden md:before:block"
+    >
+      {title}
+    </a>
+
+    <div class="content-card-meta flex flex-wrap items-center gap-2 mb-2 text-(--content-meta) text-sm">
+      {
+        dateLabel && (
+          <span class="content-card-date">📅 {dateLabel}</span>
+        )
+      }
+      {
+        shownTags.length > 0 && (
+          <span class="content-card-tags flex flex-wrap gap-1.5">
+            {shownTags.map((t) => (
+              <span class="content-card-tag">#{t}</span>
+            ))}
+          </span>
+        )
+      }
+      <span class="content-card-kind">{kind === "note" ? "笔记" : "文章"}</span>
+    </div>
+
+    {
+      excerpt && (
+        <div class="content-card-excerpt text-75 text-sm md:text-base leading-relaxed line-clamp-3">
+          {excerpt}
+        </div>
+      )
+    }
+  </div>
+
+  <a
+    href={url}
+    aria-label={title}
+    class:list={[
+      "content-card-enter",
+      "flex btn-regular w-13",
+      "absolute right-3 top-3 bottom-3 rounded-xl bg-(--enter-btn-bg)",
+      "hover:bg-(--enter-btn-bg-hover) active:bg-(--enter-btn-bg-active) active:scale-95",
+    ]}
+  >
+    <Icon
+      is:inline
+      name="material-symbols:chevron-right-rounded"
+      class="transition text-(--primary) text-4xl mx-auto"
+    />
+  </a>
+</div>
+
+<style>
+  .content-card-wrapper {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .content-card-wrapper:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+  .content-card-title {
+    word-break: break-word;
+  }
+  .content-card-excerpt {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    color: var(--content, #555);
+  }
+  .content-card-tag {
+    background: color-mix(in srgb, var(--primary, #6b8cff) 12%, transparent);
+    color: var(--primary, #6b8cff);
+    padding: 0.1rem 0.45rem;
+    border-radius: 0.4rem;
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+  .content-card-kind {
+    margin-left: auto;
+    font-size: 0.7rem;
+    opacity: 0.5;
+    border: 1px solid currentColor;
+    border-radius: 0.4rem;
+    padding: 0 0.35rem;
+  }
+  .content-card-enter {
+    align-items: center;
+    justify-content: center;
+  }
+</style>

@@ -1,0 +1,169 @@
+---
+import type { NotesTreeNode } from "@utils/notes-utils";
+
+interface Props {
+	tree: NotesTreeNode[];
+	activeSlug?: string;
+}
+const { tree, activeSlug = "" } = Astro.props;
+
+function enc(slug: string): string {
+	return "/notes/" + slug.split("/").map(encodeURIComponent).join("/") + "/";
+}
+
+function isOpen(node: NotesTreeNode, active: string): boolean {
+	if (node.type !== "folder") return false;
+	if (!active) return false;
+	return active === node.path || active.startsWith(node.path + "/");
+}
+
+function escapeHtml(s: string): string {
+	return s.replace(/[&<>"']/g, (c) => {
+		switch (c) {
+			case "&": return "&amp;";
+			case "<": return "&lt;";
+			case ">": return "&gt;";
+			case '"': return "&quot;";
+			default: return "&#39;";
+		}
+	});
+}
+
+/** 计算嵌套深度，用于差异化缩进 */
+let _depth = 0;
+function renderNodes(nodes: NotesTreeNode[]): string {
+	_depth++;
+	let html = `<ul class="nt-list" data-depth="${_depth}">`;
+	for (const n of nodes) {
+		if (n.type === "folder") {
+			const open = isOpen(n, activeSlug);
+			html += `<li class="nt-folder-item">
+				<details class="nt-folder" {open ? "open" : ""}>
+					<summary class="nt-summary"><span class="nt-ico">📂</span><span class="nt-name">${escapeHtml(n.name)}</span><span class="nt-caret">▸</span></summary>
+					${renderNodes(n.children)}
+				</details>
+			</li>`;
+		} else {
+			const active = n.slug === activeSlug;
+			html += `<li class="nt-note-item"><a href="${enc(n.slug)}" class="nt-link${active ? " is-active" : ""}">${escapeHtml(n.name)}</a></li>`;
+		}
+	}
+	html += `</ul>`;
+	_depth--;
+	return html;
+}
+
+const treeHtml = renderNodes(tree);
+---
+
+<nav class="notes-tree" set:html={treeHtml}></nav>
+
+<style>
+	.notes-tree {
+		font-size: 0.9rem;
+		line-height: 1.6;
+		user-select: none;
+	}
+	.nt-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	/* ── 文件夹子级：缩进 + 连接线 ── */
+	.nt-folder-item > .nt-folder > .nt-list {
+		margin-left: 0.6rem;
+		padding-left: 0.5rem;
+		border-left: 1px dashed var(--line-divider, rgba(128, 128, 128, 0.3));
+	}
+	/* 第二层文件夹（更浅的线） */
+	.nt-list[data-depth="2"] > .nt-folder-item > .nt-folder > .nt-list {
+		margin-left: 0.4rem;
+		padding-left: 0.4rem;
+		border-left-color: rgba(128, 128, 128, 0.18);
+	}
+	/* 第三层及更深 */
+	.nt-list[data-depth="3"] > .nt-folder-item > .nt-folder > .nt-list,
+	.nt-list[data-depth="4"] > .nt-folder-item > .nt-folder > .nt-list {
+		margin-left: 0.3rem;
+		padding-left: 0.35rem;
+		border-left-color: rgba(128, 128, 128, 0.12);
+	}
+
+	/* ── summary（文件夹标题行）── */
+	.nt-summary {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		cursor: pointer;
+		padding: 0.2rem 0.4rem;
+		border-radius: 0.45rem;
+		color: var(--content-strong, #222);
+		font-weight: 600;
+		list-style: none;
+		transition: background 0.15s ease;
+	}
+	.nt-summary::-webkit-details-marker {
+		display: none;
+	}
+	.nt-summary:hover {
+		background: rgba(128, 128, 128, 0.1);
+	}
+	.nt-ico {
+		flex-shrink: 0;
+		font-size: 0.85em;
+		transition: transform 0.25s ease;
+	}
+	.nt-folder[open] > .nt-summary .nt-ico {
+		transform: scale(1.1);
+	}
+	.nt-name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	/* 深层文件夹名字稍小 */
+	.nt-list[data-depth="2"] > .nt-folder-item > .nt-folder > .nt-summary .nt-name { font-size: 0.96em; }
+	.nt-list[data-depth="3"] > .nt-folder-item > .nt-folder > .nt-summary .nt-name { font-size: 0.93em; font-weight: 500; }
+
+	.nt-caret {
+		flex-shrink: 0;
+		transition: transform 0.25s ease;
+		font-size: 0.65rem;
+		opacity: 0.55;
+	}
+	.nt-folder[open] > .nt-summary .nt-caret {
+		transform: rotate(90deg);
+	}
+
+	/* ── 笔记链接 ── */
+	.nt-link {
+		display: block;
+		padding: 0.2rem 0.35rem 0.2rem 1.3rem;
+		border-radius: 0.4rem;
+		color: var(--content, #444);
+		text-decoration: none;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		transition: color 0.15s, background 0.15s, padding-left 0.15s;
+	}
+	.nt-link:hover {
+		background: rgba(128, 128, 128, 0.1);
+		color: var(--primary, #6b8cff);
+		padding-left: 1.5rem;
+	}
+	.nt-link.is-active {
+		background: color-mix(in srgb, var(--primary, #6b8cff) 18%, transparent);
+		color: var(--primary, #6b8cff);
+		font-weight: 600;
+	}
+
+	/* 展开折叠动画 */
+	.nt-folder > .nt-list {
+		overflow: hidden;
+		transition: max-height 0.3s ease, opacity 0.2s ease;
+	}
+</style>

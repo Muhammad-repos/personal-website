@@ -1,0 +1,110 @@
+---
+import MainGridLayout from "@layouts/MainGridLayout.astro";
+import NotesTree from "@components/layout/NotesTree.astro";
+import { getCollection } from "astro:content";
+import { getNotesTree } from "@utils/notes-utils";
+
+const tree = await getNotesTree();
+const entries = await getCollection("notes");
+const total = entries.length;
+---
+
+<MainGridLayout title="笔记" description="我的 Obsidian 笔记库">
+	<div class="notes-index">
+		<aside class="notes-sidebar card-base onload-animation">
+			<div class="notes-index-h">
+				<span class="nt-ico">📚</span> 笔记库
+				<span class="notes-count">{total} 篇</span>
+			</div>
+			<div class="notes-tree-wrap">
+				<NotesTree tree={tree} />
+			</div>
+		</aside>
+
+		<section class="notes-welcome card-base onload-animation">
+			<h1 class="notes-welcome-title">我的笔记</h1>
+			<p class="notes-welcome-sub">
+				共 <b>{total}</b> 篇，来自 Obsidian 笔记库（考研 · 知识树 · 日记）。
+			</p>
+			<ul class="notes-feat">
+				<li>🖼️ 图片、📐 公式（KaTeX）、💻 代码高亮均原生支持</li>
+				<li>💡 Obsidian Callout（> [!note] 等）自动渲染为提示框</li>
+				<li>🔗 笔记间双向链接，点击左侧目录可快速跳转</li>
+			</ul>
+			<p class="notes-hint">在左侧目录中选择一篇开始阅读 →</p>
+		</section>
+	</div>
+</MainGridLayout>
+
+<style>
+	.notes-index {
+		display: grid;
+		grid-template-columns: 300px 1fr;
+		gap: 1rem;
+		align-items: start;
+	}
+	.notes-sidebar {
+		position: sticky;
+		top: 6rem;
+		max-height: calc(100vh - 8rem);
+		overflow: auto;
+		padding: 1rem;
+	}
+	.notes-index-h {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-weight: 700;
+		font-size: 1.05rem;
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px solid var(--line-divider, rgba(128, 128, 128, 0.2));
+	}
+	.notes-count {
+		margin-left: auto;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--content-meta, #999);
+	}
+	.notes-welcome {
+		padding: 2rem;
+	}
+	.notes-welcome-title {
+		font-size: 1.8rem;
+		font-weight: 800;
+		margin: 0 0 0.5rem;
+		color: var(--content-strong, #222);
+	}
+	.notes-welcome-sub {
+		color: var(--content, #555);
+		margin: 0 0 1.25rem;
+	}
+	.notes-feat {
+		list-style: none;
+		padding: 0;
+		margin: 0 0 1.25rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.notes-feat li {
+		padding: 0.5rem 0.75rem;
+		background: color-mix(in srgb, var(--primary, #6b8cff) 8%, transparent);
+		border-radius: 0.6rem;
+		color: var(--content, #444);
+	}
+	.notes-hint {
+		color: var(--content-meta, #999);
+		font-size: 0.85rem;
+		margin: 0;
+	}
+	@media (max-width: 768px) {
+		.notes-index {
+			grid-template-columns: 1fr;
+		}
+		.notes-sidebar {
+			position: static;
+			max-height: 40vh;
+		}
+	}
+</style>

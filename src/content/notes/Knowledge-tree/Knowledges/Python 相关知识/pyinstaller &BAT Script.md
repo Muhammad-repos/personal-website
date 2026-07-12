@@ -1,0 +1,1 @@
+>bat脚本中的换行符应该是Windows的==CRLF==，而不是Linux的==LF==，不然一直报错

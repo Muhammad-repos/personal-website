@@ -1,0 +1,181 @@
+---
+import { render } from "astro:content";
+import { getCollection } from "astro:content";
+import MainGridLayout from "@layouts/MainGridLayout.astro";
+import Markdown from "@components/common/Markdown.astro";
+import NotesTree from "@components/layout/NotesTree.astro";
+import SidebarTOC from "@components/widget/SidebarTOC.astro";
+import { getNotesTree } from "@utils/notes-utils";
+
+export async function getStaticPaths() {
+	const entries = await getCollection("notes");
+	return entries.map((entry) => ({
+		params: { slug: entry.id },
+		props: { entry },
+	}));
+}
+
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+const tree = await getNotesTree();
+
+const data = entry.data as Record<string, unknown>;
+const title =
+	typeof data.title === "string" && data.title.trim()
+		? data.title.trim()
+		: entry.id.split("/").pop() || entry.id;
+
+const rawDate = data.date;
+const dateStr = (() => {
+	if (!rawDate) return null;
+	if (rawDate instanceof Date) {
+		if (Number.isNaN(rawDate.getTime())) return null;
+		return rawDate.toISOString().slice(0, 10);
+	}
+	if (typeof rawDate === "string") return rawDate;
+	return null;
+})();
+---
+
+<MainGridLayout
+	title={title}
+	description={title}
+	headings={headings}
+	setOGTypeArticle={true}
+	readingView={true}
+>
+	<div class="reader-layout">
+		<!-- 左：文件树 -->
+		<aside class="reader-sidebar card-base onload-animation">
+			<div class="reader-sidebar-h">
+				<a href="/" class="reader-back">← 返回首页</a>
+			</div>
+			<div class="reader-tree-wrap">
+				<NotesTree tree={tree} activeSlug={entry.id} />
+			</div>
+		</aside>
+
+		<!-- 中：正文 -->
+		<article class="reader-main card-base onload-animation">
+			<header class="reader-head">
+				<h1 class="reader-title">{title}</h1>
+				{
+					dateStr && (
+						<div class="reader-meta">
+							<span>📅 {dateStr}</span>
+							{Array.isArray(data.tags) && data.tags.length > 0 && (
+								<span class="reader-tags">
+									{data.tags.map((t: unknown) => (
+										<span class="reader-tag">#{String(t)}</span>
+									))}
+								</span>
+							)}
+						</div>
+					)
+				}
+			</header>
+			<Markdown class="reader-content">
+				<Content />
+			</Markdown>
+		</article>
+
+		<!-- 右：目录（SidebarTOC 滚动高亮风格） -->
+		{headings.filter((h) => h.depth >= 2 && h.depth <= 3).length > 0 && (
+			<aside class="reader-toc card-base onload-animation">
+				<SidebarTOC headings={headings} />
+			</aside>
+		)}
+	</div>
+</MainGridLayout>
+
+<style>
+	.reader-layout {
+		display: grid;
+		grid-template-columns: 220px minmax(0, 1fr) 240px;
+		gap: 1rem;
+		align-items: start;
+	}
+
+	/* ── 左侧文件树 ── */
+	.reader-sidebar {
+		padding: 1rem;
+	}
+	.reader-sidebar-h {
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px solid var(--line-divider, rgba(128, 128, 128, 0.2));
+	}
+	.reader-back {
+		color: var(--primary, #6b8cff);
+		text-decoration: none;
+		font-weight: 600;
+		font-size: 0.9rem;
+	}
+	.reader-back:hover {
+		text-decoration: underline;
+	}
+
+	/* ── 中间正文 ── */
+	.reader-main {
+		padding: 1.5rem 2rem 2.5rem;
+		min-width: 0;
+	}
+	.reader-head {
+		margin-bottom: 1.25rem;
+		padding-bottom: 1rem;
+		border-bottom: 1px solid var(--line-divider, rgba(128, 128, 128, 0.2));
+	}
+	.reader-title {
+		font-size: 1.7rem;
+		font-weight: 800;
+		margin: 0 0 0.5rem;
+		color: var(--content-strong, #222);
+		word-break: break-word;
+	}
+	.reader-meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 0.75rem;
+		color: var(--content-meta, #999);
+		font-size: 0.82rem;
+	}
+	.reader-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+	.reader-tag {
+		background: color-mix(in srgb, var(--primary, #6b8cff) 12%, transparent);
+		color: var(--primary, #6b8cff);
+		padding: 0.1rem 0.5rem;
+		border-radius: 0.4rem;
+		font-size: 0.75rem;
+	}
+	.reader-content {
+		min-width: 0;
+	}
+
+	/* ── 右侧目录 ── */
+	.reader-toc {
+		padding: 0;
+	}
+
+	/* ── 响应式 ── */
+	@media (max-width: 1100px) {
+		.reader-layout {
+			grid-template-columns: 240px minmax(0, 1fr);
+		}
+		.reader-toc {
+			display: none;
+		}
+	}
+	@media (max-width: 768px) {
+		.reader-layout {
+			grid-template-columns: 1fr;
+		}
+		.reader-main {
+			padding: 1.25rem 1rem 2rem;
+		}
+	}
+</style>

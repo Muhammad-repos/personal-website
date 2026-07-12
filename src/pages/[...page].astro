@@ -1,0 +1,301 @@
+---
+import type { GetStaticPaths } from "astro";
+import Pagination from "@/components/common/Pagination.astro";
+import ContentCard from "@/components/layout/ContentCard.astro";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+import { getCollection } from "astro:content";
+import { siteConfig } from "@/config";
+import { formatDateToYYYYMMDD } from "@/utils/date-utils";
+import {
+	noteTitle,
+	noteDateStr,
+	noteSortValue,
+	noteExcerpt,
+	extractExcerpt,
+	noteUrl,
+} from "@utils/notes-utils";
+
+export const getStaticPaths = (async ({ paginate }) => {
+	const notes = await getCollection("notes");
+	const posts = await getCollection("posts");
+
+	type Item = {
+		title: string;
+		url: string;
+		dateLabel: string | null;
+		tags: string[];
+		excerpt: string;
+		kind: "note" | "post";
+		sortVal: number;
+	};
+
+	const items: Item[] = [];
+
+	for (const n of notes) {
+		const data = n.data as Record<string, unknown>;
+		items.push({
+			title: noteTitle(n),
+			url: noteUrl(n.id),
+			dateLabel: noteDateStr(data),
+			tags: Array.isArray(data.tags) ? (data.tags as string[]) : [],
+			excerpt: noteExcerpt(n),
+			kind: "note",
+			sortVal: noteSortValue(data),
+		});
+	}
+
+	for (const p of posts) {
+		const data = p.data as Record<string, unknown>;
+		const published = data.published as Date | undefined;
+		items.push({
+			title: (typeof data.title === "string" && data.title) || p.id,
+			url: "/posts/" + p.id.split("/").map(encodeURIComponent).join("/") + "/",
+			dateLabel: published ? formatDateToYYYYMMDD(published) : null,
+			tags: Array.isArray(data.tags) ? (data.tags as string[]) : [],
+			excerpt:
+				typeof data.description === "string" && data.description.trim()
+					? data.description.trim()
+					: extractExcerpt(p.body, 120),
+			kind: "post",
+			sortVal: published ? new Date(published).getTime() : 0,
+		});
+	}
+
+	// 新的在前
+	items.sort((a, b) => b.sortVal - a.sortVal);
+
+	const pageSize = siteConfig.pagination.postsPerPage || 12;
+	return paginate(items, { pageSize });
+}) satisfies GetStaticPaths;
+
+const { page } = Astro.props;
+const len = page.data.length;
+
+// 布局切换配置（与 PostPage.astro 保持一致）
+const defaultLayout = siteConfig.postListLayout.defaultMode || "list";
+const mobileDefaultLayout =
+	siteConfig.postListLayout.mobileDefaultMode || defaultLayout;
+const initialLayoutClass =
+	defaultLayout === "grid"
+		? "post-grid-auto grid-mode"
+		: "flex flex-col gap-4 md:gap-4 list-mode";
+---
+
+<MainGridLayout>
+  <div
+    id="post-list-container"
+    class={`transition-all duration-500 ease-in-out mb-4 ${initialLayoutClass}`}
+    data-default-layout={defaultLayout}
+    data-mobile-default-layout={mobileDefaultLayout}
+    style={"--post-card-min-width: 320px;"}
+  >
+    {
+      page.data.map((item) => (
+        <ContentCard
+          title={item.title}
+          url={item.url}
+          dateLabel={item.dateLabel}
+          tags={item.tags}
+          excerpt={item.excerpt}
+          kind={item.kind}
+          class="onload-animation post-card-item"
+        />
+      ))
+    }
+  </div>
+
+  {
+    page.total > page.size && (
+      <Pagination
+        class="mx-auto onload-animation"
+        page={page}
+        style={`animation-delay: calc(var(--content-delay) + ${len * 50}ms)`}
+      />
+    )
+  }
+</MainGridLayout>
+
+<!-- 立即执行脚本：防止刷新时的布局闪烁（与 PostPage.astro 保持一致） -->
+<script is:inline define:vars={{ defaultLayout, mobileDefaultLayout }}>
+  (function() {
+    const savedLayout = localStorage.getItem('postListLayout');
+    const effectiveDefault = window.innerWidth < 780 ? mobileDefaultLayout : defaultLayout;
+    const effectiveLayout = window.innerWidth < 380 ? 'grid' : (savedLayout || effectiveDefault);
+
+    if (effectiveLayout !== defaultLayout) {
+      const container = document.getElementById('post-list-container');
+      if (container) {
+        container.style.transition = 'none';
+        container.classList.remove('list-mode', 'grid-mode', 'post-grid-auto', 'flex', 'flex-col', 'gap-4', 'md:gap-4');
+        if (effectiveLayout === 'grid') {
+          container.classList.add('grid-mode', 'post-grid-auto');
+        } else {
+          container.classList.add('list-mode', 'flex', 'flex-col', 'gap-4', 'md:gap-4');
+        }
+        container.offsetHeight;
+        container.style.transition = '';
+      }
+    }
+  })();
+</script>
+
+<script>
+  // 首页布局切换脚本（与 PostPage.astro 的 layoutChange 监听逻辑保持一致）
+  function initHomeLayout() {
+    const container = document.getElementById("post-list-container");
+    if (!container) return;
+
+    const savedLayout = localStorage.getItem("postListLayout");
+    const defLayout =
+      container.getAttribute("data-default-layout") || "list";
+    const mobileDefLayout =
+      container.getAttribute("data-mobile-default-layout") || defLayout;
+    const effectiveDefault = window.innerWidth < 780 ? mobileDefLayout : defLayout;
+    let currentLayout = savedLayout || effectiveDefault;
+
+    if (window.innerWidth < 380) {
+      currentLayout = "grid";
+    }
+
+    updateHomeLayout(currentLayout);
+  }
+
+  function updateHomeLayout(layout: string) {
+    const container = document.getElementById("post-list-container");
+    if (!container) return;
+
+    const isCurrentGrid = container.classList.contains("grid-mode");
+    const isCurrentList = container.classList.contains("list-mode");
+    const currentLayout = isCurrentGrid ? "grid" : isCurrentList ? "list" : null;
+
+    const applyClasses = () => {
+      container.classList.remove("list-mode", "grid-mode", "post-grid-auto");
+      if (layout === "grid") {
+        container.classList.add("grid-mode", "post-grid-auto");
+        container.classList.remove("flex", "flex-col");
+      } else {
+        container.classList.add("list-mode", "flex", "flex-col", "gap-4", "md:gap-4");
+        container.classList.remove("post-grid-auto");
+      }
+    };
+
+    // 首次初始化：无动画
+    if (!currentLayout) {
+      applyClasses();
+      return;
+    }
+
+    // 相同布局：跳过
+    if (currentLayout === layout) return;
+
+    // 切换布局：带淡入淡出动画
+    container.classList.add("layout-switching");
+    setTimeout(() => {
+      applyClasses();
+      requestAnimationFrame(() => {
+        container.classList.remove("layout-switching");
+      });
+    }, 200);
+  }
+
+  // 监听设置面板派发的 layoutChange 事件
+  window.addEventListener("layoutChange", function (event) {
+    // @ts-ignore
+    const newLayout = event.detail.layout;
+    updateHomeLayout(newLayout);
+  });
+
+  // 页面加载时初始化
+  document.addEventListener("DOMContentLoaded", function () {
+    setTimeout(initHomeLayout, 50);
+  });
+
+  // Swup 切页后重新初始化
+  document.addEventListener("astro:page-load", function () {
+    setTimeout(initHomeLayout, 50);
+  });
+
+  document.addEventListener("astro:after-swap", function () {
+    setTimeout(initHomeLayout, 50);
+  });
+
+  // 窗口大小变化时重新评估
+  let resizeTimeout: any;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(initHomeLayout, 250);
+  });
+
+  // 立即执行一次
+  setTimeout(initHomeLayout, 0);
+</script>
+
+<style>
+  /* 布局切换动画 */
+  #post-list-container {
+    transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  }
+
+  #post-list-container > :global(*) {
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  #post-list-container.layout-switching {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  /* 网格模式 */
+  .post-grid-auto {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--post-card-min-width, 320px), 1fr));
+    gap: 1rem;
+  }
+
+  /* 网格模式下的卡片样式调整 */
+  #post-list-container.grid-mode :global(.content-card-wrapper) {
+    flex-direction: column;
+  }
+
+  #post-list-container.grid-mode :global(.content-card-content) {
+    padding: 1rem;
+  }
+
+  #post-list-container.grid-mode :global(.content-card-title) {
+    font-size: 1.35rem;
+    line-height: 1.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  #post-list-container.grid-mode :global(.content-card-title::before) {
+    display: none;
+  }
+
+  #post-list-container.grid-mode :global(.content-card-meta) {
+    margin-bottom: 0.5rem;
+    gap: 0.5rem;
+  }
+
+  #post-list-container.grid-mode :global(.content-card-enter) {
+    position: relative;
+    auto-placement: right-center;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    width: 100%;
+    margin-top: 0.75rem;
+    border-radius: 0.5rem;
+  }
+
+  /* 列表模式（默认） - 保持原有单列卡片外观 */
+  #post-list-container.list-mode :global(.content-card-wrapper) {
+    /* 列表模式使用组件默认样式即可 */
+  }
+
+  @media (max-width: 640px) {
+    .post-grid-auto {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
