@@ -1,0 +1,385 @@
+/* ==========================================================================
+ * Glassmorphism Design System — Apple-like · Glass · Motion
+ * --------------------------------------------------------------------------
+ * 叠加在 Firefly 既有设计令牌之上，不修改原有规则，便于整体回退。
+ *
+ * 设计要点：
+ *  1. 页面底层放一整块「Apple 极光网格渐变」背景（自托管、纯 CSS、缓慢流动），
+ *     让毛玻璃表面背后有丰富、有色彩变化的内容可以透出与折射。
+ *     强度由 --aurora-intensity CSS 变量控制（默认 1.2，可在设置面板调节）。
+ *  2. 极光层之下有一层「微点阵纹理」（subtle dot grid），让 backdrop-filter:blur()
+ *     有锐利的东西可模糊——这样调模糊强度滑块时视觉差异明显。
+ *  3. 卡片 / 浮层 / 下拉 / 按钮 / 导航栏统一半透明 + backdrop-filter 磨砂 +
+ *     1px 高光描边 + 柔和分层阴影。
+ *     卡片不透明度由 --glass-opacity 控制（默认 32%，可在设置面板调节）。
+ *  4. Motion：极光缓慢漂移、卡片悬浮抬升，尊重 prefers-reduced-motion。
+ *
+ * 依赖 variables.styl 中的 --glass-* 令牌与 --card-bg / --float-panel-bg 半透明取值。
+ * ========================================================================== */
+
+/* ==========================================================================
+ * 1. 微点阵纹理层（让 blur 有东西可模糊）
+ *    放在最底层 z-index:-3，用极淡的径向渐变模拟点阵
+ * ========================================================================== */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background-color: var(--page-bg);
+  /* 微点阵：用 radial-gradient 画 24px 间距的圆点，alpha 仅 0.06 */
+  background-image:
+    radial-gradient(circle, rgba(120, 140, 180, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ==========================================================================
+ * 2. Apple 极光网格背景（主体色彩）
+ *    - 固定层：多色网格（z-index:-2）
+ *    - 漂移层：两团大色斑缓慢漂移（z-index:-1），opacity 由 --aurora-intensity 控制
+ *
+ *    --aurora-intensity 控制漂移层亮度：
+ *      0   = 完全隐藏（只剩点阵纹理 + 纯色底）
+ *      0.6 = 淡淡的极光
+ *      1.2 = 默认强度
+ *      2.0+ = 浓郁极光
+ * ========================================================================== */
+
+/* ===== 静态极光网格（固定不动，提供基础色调）===== */
+html:not(.dark) body {
+  /* 用两个伪元素不够分了；静态层改用 body 背景的额外包装 */
+  background-image:
+    radial-gradient(60% 55% at 12% 8%, rgba(99, 132, 255, 0.50), transparent 60%),
+    radial-gradient(55% 50% at 88% 6%, rgba(226, 138, 214, 0.44), transparent 60%),
+    radial-gradient(60% 60% at 78% 92%, rgba(88, 214, 200, 0.38), transparent 62%),
+    radial-gradient(55% 55% at 20% 96%, rgba(255, 196, 140, 0.32), transparent 60%),
+    radial-gradient(45% 45% at 50% 45%, rgba(160, 150, 255, 0.26), transparent 65%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+html.dark body {
+  background-image:
+    radial-gradient(60% 55% at 12% 8%, rgba(86, 108, 232, 0.38), transparent 60%),
+    radial-gradient(55% 50% at 88% 6%, rgba(196, 88, 178, 0.30), transparent 60%),
+    radial-gradient(60% 60% at 78% 92%, rgba(56, 176, 168, 0.26), transparent 62%),
+    radial-gradient(55% 55% at 20% 96%, rgba(210, 140, 90, 0.22), transparent 60%),
+    radial-gradient(45% 45% at 50% 45%, rgba(120, 110, 220, 0.22), transparent 65%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* ===== 漂移极光层（动态，受 --aurora-intensity 控制）=====
+   * --aurora-intensity 直接控制 alpha 通道（不是 opacity）：
+   *   0    = 完全透明（极光消失）
+   *   0.6  = 很淡的极光
+   *   1.0  = 默认可见强度  
+   *   1.5+ = 明显浓郁
+   *   2.5  = 非常浓郁（最大）
+   *   注意：alpha 值上限 1.0 由 min() 自动约束，不会溢出
+   */
+body::after {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(42% 42% at 30% 35%, rgba(120, 160, 255, var(--aurora-alpha, 0.52)), transparent 60%),
+    radial-gradient(44% 44% at 70% 65%, rgba(255, 150, 210, var(--aurora-alpha-2, 0.46)), transparent 60%);
+  background-repeat: no-repeat;
+  filter: blur(28px);
+  will-change: transform;
+  opacity: 1;
+  animation: aurora-drift 34s ease-in-out infinite alternate;
+}
+
+html.dark body::after {
+  background-image:
+    radial-gradient(42% 42% at 30% 35%, rgba(100, 130, 240, var(--aurora-alpha-dark, 0.40)), transparent 60%),
+    radial-gradient(44% 44% at 70% 65%, rgba(220, 120, 200, var(--aurora-alpha-2-dark, 0.34)), transparent 60%);
+  opacity: 1;
+}
+
+@keyframes aurora-drift {
+  0% {
+    transform: translate3d(-3%, -2%, 0) scale(1.05) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(4%, 3%, 0) scale(1.12) rotate(6deg);
+  }
+  100% {
+    transform: translate3d(-2%, 4%, 0) scale(1.08) rotate(-4deg);
+  }
+}
+
+/* ==========================================================================
+ * 3. 毛玻璃卡片 —— 核心改动：用 --glass-opacity 覆盖背景，让极光透出来
+ * ========================================================================== */
+
+.card-base,
+.card-base-transparent,
+.float-panel:not(#display-setting),
+.dropdown-content,
+.btn-card {
+  background-color: rgb(255 255 255 / var(--glass-opacity, 0.32)) !important;
+}
+
+html.dark .card-base,
+html.dark .card-base-transparent,
+html.dark .float-panel:not(#display-setting),
+html.dark .dropdown-content,
+html.dark .btn-card {
+  background-color: rgb(28 28 34 / var(--glass-opacity, 0.28)) !important;
+}
+
+/* 设置面板本身保持稍高不透明度（保证文字可读性） */
+#display-setting {
+  background-color: rgb(255 255 255 / calc(var(--glass-opacity, 0.32) + 0.25)) !important;
+}
+html.dark #display-setting {
+  background-color: rgb(28 28 34 / calc(var(--glass-opacity, 0.28) + 0.28)) !important;
+}
+
+/* ==========================================================================
+ * 4. 毛玻璃表面效果：backdrop-filter 磨砂 + 描边 + 阴影
+ *    --glass-blur 控制模糊强度（默认 18px，0=关闭磨砂，30=强磨砂）
+ *    点阵纹理层让 blur 的变化肉眼可见（模糊的点阵 vs 清晰的点阵）
+ * ========================================================================== */
+.card-base,
+.card-base-transparent,
+.float-panel,
+.dropdown-content,
+.btn-card {
+  -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur, 18px)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow) !important;
+}
+
+/* ==========================================================================
+ * 5. 导航栏玻璃化（高优先级，覆盖 navbar.css 的 !important 规则）
+ * ========================================================================== */
+
+/* 基础：覆盖 #navbar>div { backdrop-filter: blur(0) } */
+#navbar > div {
+  -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(var(--glass-saturate)) !important;
+  backdrop-filter: blur(var(--glass-blur, 18px)) saturate(var(--glass-saturate)) !important;
+}
+
+/* 覆盖 navbar.css 中 body:has(#wallpaper-wrapper) 的 background + blur 强制规则 */
+body:has(#wallpaper-wrapper) #navbar[data-transparent-mode="semi"] > div,
+body:has(#wallpaper-wrapper) #navbar[data-transparent-mode="semi"].scrolled > div,
+#navbar[data-enable-blur="false"] > div {
+  background-color: rgb(255 255 255 / calc(var(--glass-opacity, 0.32) + 0.18)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(var(--glass-saturate)) !important;
+  backdrop-filter: blur(var(--glass-blur, 18px)) saturate(var(--glass-saturate)) !important;
+  border: 1px solid var(--glass-border) !important;
+}
+
+html.dark body:has(#wallpaper-wrapper) #navbar[data-transparent-mode="semi"] > div,
+html.dark body:has(#wallpaper-wrapper) #navbar[data-transparent-mode="semi"].scrolled > div,
+html.dark #navbar[data-enable-blur="false"] > div {
+  background-color: rgb(28 28 34 / calc(var(--glass-opacity, 0.28) + 0.20)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(var(--glass-saturate)) !important;
+  backdrop-filter: blur(var(--glass-blur, 18px)) saturate(var(--glass-saturate)) !important;
+  border: 1px solid var(--glass-border) !important;
+}
+
+/* ==========================================================================
+ * 6. Motion：悬浮轻微抬升 + 阴影加深
+ * ========================================================================== */
+.post-card,
+.card-base,
+.widget,
+.btn-card {
+  transition:
+    transform var(--duration-medium) var(--ease-standard),
+    box-shadow var(--duration-medium) var(--ease-standard),
+    background-color var(--duration-medium) var(--ease-standard),
+    border-color var(--duration-medium) var(--ease-standard) !important;
+}
+
+.post-card:hover,
+.card-base:hover,
+.widget:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(31, 38, 75, 0.18) !important;
+}
+
+html.dark .post-card:hover,
+html.dark .card-base:hover,
+html.dark .widget:hover {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* ==========================================================================
+ * 7. 无障碍：尊重"减少动效"偏好
+ * ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    animation: none;
+  }
+  .post-card:hover,
+  .card-base:hover,
+  .widget:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+ * 8. Glass 滑块样式（Apple-like 中性灰白，覆盖原主题的粉紫配色）
+ * ========================================================================== */
+/*
+ * 原主题的 .slider 用 var(--primary)（hue=270 蓝紫）做填充色 → 粉紫色。
+ * 这里用 ID + 类组合选择器确保最高优先级，只作用于 Glass 效果区内的三个滑块。
+ */
+#display-setting input[type="range"].overlay-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0.85rem !important;
+  border-radius: 999px;
+  background-image: linear-gradient(
+    90deg,
+    oklch(0.50 0.025 250) 0 var(--range-progress, 50%),
+    oklch(0.88 0.015 250 / 0.40) var(--range-progress, 50%) 100%
+  ) !important;
+  transition: background-image 0.15s ease-in-out;
+}
+
+/* WebKit 滑块 thumb（圆形拖动手柄） */
+#display-setting input[type="range"].overlay-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: oklch(0.45 0.03 250);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+#display-setting input[type="range"].overlay-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);
+}
+
+#display-setting input[type="range"].overlay-slider::-webkit-slider-thumb:active {
+  transform: scale(1.05);
+}
+
+/* Firefox 滑块 thumb */
+#display-setting input[type="range"].overlay-slider::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: oklch(0.45 0.03 250);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+#display-setting input[type="range"].overlay-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);
+}
+
+/* Firefox track */
+#display-setting input[type="range"].overlay-slider::-moz-range-track {
+  height: 0.85rem;
+  border-radius: 999px;
+  background: transparent;
+}
+
+/* ==========================================================================
+ * 9. 设置面板自定义滚动条（Apple-like 细腻滚动条）
+ * ========================================================================== */
+#display-setting {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.65 0.03 250 / 0.4) transparent;
+}
+
+#display-setting::-webkit-scrollbar {
+  width: 5px;
+}
+
+#display-setting::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+}
+
+#display-setting::-webkit-scrollbar-thumb {
+  background: oklch(0.60 0.04 250 / 0.35);
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+#display-setting::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.55 0.05 250 / 0.55);
+}
+
+/* ==========================================================================
+ * 10. 自定义光标效果全局规则（CursorEffect.svelte 的全局部分）
+ * ========================================================================== */
+
+/* 自定义光标：仅当 CursorEffect 启用时给 <html> 加 .cursor-hidden 才隐藏系统光标 */
+html.cursor-hidden,
+html.cursor-hidden * {
+  cursor: none !important;
+}
+
+/* 文本输入/可编辑区域保留 I 形光标（组件会让光环在此时淡出，避免双光标）*/
+html.cursor-hidden input,
+html.cursor-hidden textarea,
+html.cursor-hidden [contenteditable="true"],
+html.cursor-hidden [role="textbox"],
+html.cursor-hidden select {
+  cursor: text !important;
+}
+
+/* ================================================================
+ * 点击涟漪（DOM + CSS 动画）
+ * 必须放在全局 CSS：该 div 由 CursorEffect.svelte 在运行时
+ * document.createElement 创建，拿不到 Svelte 的 scoped 哈希属性，
+ * 若写在组件 <style> 内会被编译器 tree-shake 丢弃 → 元素零样式不可见。
+ * ================================================================ */
+.cursor-ripple {
+  position: absolute;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 62%);
+  box-shadow: 0 0 0 0.5px rgba(45, 55, 80, 0.28),
+             0 0 18px 3px rgba(170, 195, 230, 0.50);
+  transform: translate(-50%, -50%) scale(0.25);
+  animation: cursor-ripple-anim 0.62s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+@keyframes cursor-ripple-anim {
+  0% {
+    transform: translate(-50%, -50%) scale(0.25);
+    opacity: 0.95;
+    border-width: 2.5px;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+    border-width: 0.5px;
+  }
+}
+
+/* ================================================================
+ * 壁纸容器底色
+ * 本地壁纸（src/assets/DesktopWallpaper）由 Astro 自动优化 + LQIP 渐变占位，
+ * 加载前不会闪白；这里再垫一层主题底色作为双保险（none 模式下容器隐藏，无副作用）。
+ * ================================================================ */
+#wallpaper-wrapper {
+  background-color: var(--page-bg);
+}
