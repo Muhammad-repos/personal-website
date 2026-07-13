@@ -1,3 +1,9 @@
+# HTML 与动态内容（兜底，必须放最前）：浏览器每次校验（命中 304 很快），边缘缓存 1 小时
+# 注意：放在最前，使下方具体资源规则的 immutable 能拼接到 Cache-Control 末尾并生效
+# （Cloudflare Pages 会把所有匹配规则的同名字段拼接，浏览器取最后一个 max-age）
+/*
+  Cache-Control: public, max-age=0, s-maxage=3600, must-revalidate
+
 # 构建产物（带 hash，内容变则 URL 变）→ 永久缓存，避免重复下载
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
@@ -10,7 +16,7 @@
 /assets/fonts/*
   Cache-Control: public, max-age=31536000, immutable
 
-# 通用静态资源
+# 通用静态资源（含音乐歌单 playlist.json）
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
@@ -20,7 +26,3 @@
 
 /*.css
   Cache-Control: public, max-age=31536000, immutable
-
-# HTML 与动态内容：浏览器每次校验（命中 304 很快），边缘缓存 1 小时
-/*
-  Cache-Control: public, max-age=0, s-maxage=3600, must-revalidate
