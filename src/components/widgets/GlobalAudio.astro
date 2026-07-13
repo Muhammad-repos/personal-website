@@ -139,12 +139,12 @@ const showMini = musicPlayerConfig.showMiniPlayer ?? false;
             // Also listen via swup hooks (more reliable — fires AFTER DOM replacement)
             const bindSwup = () => {
                 if (window.swup?.hooks) {
-                    window.swup.hooks.on('content:replaced', () => {
+                    window.swup.hooks.on('content:replace', () => {
                         this.handlePageLoad();
                     });
                 } else {
                     document.addEventListener('swup:enable', () => {
-                        window.swup.hooks.on('content:replaced', () => {
+                        window.swup.hooks.on('content:replace', () => {
                             this.handlePageLoad();
                         });
                     });
