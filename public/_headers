@@ -1,0 +1,26 @@
+# 构建产物（带 hash，内容变则 URL 变）→ 永久缓存，避免重复下载
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 本地托管的第三方运行时（Spine 等）
+/pio/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 字体
+/assets/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 通用静态资源
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 散落的 JS / CSS
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+# HTML 与动态内容：浏览器每次校验（命中 304 很快），边缘缓存 1 小时
+/*
+  Cache-Control: public, max-age=0, s-maxage=3600, must-revalidate

@@ -36,33 +36,26 @@ import { url } from "@/utils/url-utils";
     const existingLink = document.querySelector('link[href*="spine-player"]');
     if (existingLink) return;
 
-    // 首先尝试加载 CDN CSS
-    const cdnLink = document.createElement("link");
-    cdnLink.rel = "stylesheet";
-    cdnLink.href =
-      "https://unpkg.com/@esotericsoftware/spine-player@4.2.*/dist/spine-player.min.css";
+    // 优先加载本地托管的 CSS（走本站 CDN，更快更稳），失败才回退 unpkg
+    const localLink = document.createElement("link");
+    localLink.rel = "stylesheet";
+    localLink.href = cssPath;
+    localLink.onerror = function () {
+      console.warn("⚠️ Spine CSS local failed, trying unpkg fallback...");
 
-    // 监听加载失败事件，自动回退到本地文件
-    cdnLink.onerror = function () {
-      console.warn("⚠️ Spine CSS CDN failed, trying local fallback...");
-
-      // 移除失败的 CDN link
-      if (cdnLink.parentNode) {
-        cdnLink.parentNode.removeChild(cdnLink);
-      }
-
-      // 创建本地备用 CSS link
-      const localLink = document.createElement("link");
-      localLink.rel = "stylesheet";
-      localLink.href = cssPath;
-      localLink.onerror = function () {
+      // 创建 unpkg 备用 CSS link
+      const cdnLink = document.createElement("link");
+      cdnLink.rel = "stylesheet";
+      cdnLink.href =
+        "https://unpkg.com/@esotericsoftware/spine-player@4.2.*/dist/spine-player.min.css";
+      cdnLink.onerror = function () {
         console.error("❌ Failed to load Spine CSS");
       };
 
-      document.head.appendChild(localLink);
+      document.head.appendChild(cdnLink);
     };
 
-    document.head.appendChild(cdnLink);
+    document.head.appendChild(localLink);
   }
 
   // 消息框功能已移至公共组件 MessageBox.astro
@@ -170,28 +163,28 @@ import { url } from "@/utils/url-utils";
           return;
         }
 
-        console.log("📦 Loading Spine runtime...");
+        console.log("📦 Loading Spine runtime (local)...");
         const script = document.createElement("script");
-        script.src =
-          "https://unpkg.com/@esotericsoftware/spine-player@4.2.*/dist/iife/spine-player.min.js";
+        script.src = jsPath;
         script.onload = () => {
-          console.log("✅ Spine runtime loaded from CDN");
+          console.log("✅ Spine runtime loaded from local");
           resolve();
         };
         script.onerror = (_error) => {
-          console.warn("⚠️ CDN failed, trying local fallback...");
+          console.warn("⚠️ local failed, trying unpkg...");
 
-          // 尝试本地回退
-          const fallbackScript = document.createElement("script");
-          fallbackScript.src = jsPath;
-          fallbackScript.onload = () => {
-            console.log("✅ Spine runtime loaded from local fallback");
+          // 尝试 unpkg 回退
+          const cdnScript = document.createElement("script");
+          cdnScript.src =
+            "https://unpkg.com/@esotericsoftware/spine-player@4.2.*/dist/iife/spine-player.min.js";
+          cdnScript.onload = () => {
+            console.log("✅ Spine runtime loaded from unpkg fallback");
             resolve();
           };
-          fallbackScript.onerror = () => {
+          cdnScript.onerror = () => {
             reject(new Error("Failed to load Spine runtime"));
           };
-          document.head.appendChild(fallbackScript);
+          document.head.appendChild(cdnScript);
         };
         document.head.appendChild(script);
       });
@@ -390,10 +383,18 @@ import { url } from "@/utils/url-utils";
   // 监听窗口大小变化
   window.addEventListener("resize", updateResponsiveDisplay);
 
-  // 页面加载完成后初始化（只初始化一次）
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initSpineModel);
+  // 延迟到页面 load + 浏览器空闲时初始化，避免阻塞首屏渲染
+  function scheduleSpineInit() {
+    const run = () => initSpineModel();
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(run, { timeout: 4000 });
+    } else {
+      setTimeout(run, 1);
+    }
+  }
+  if (document.readyState === "complete") {
+    scheduleSpineInit();
   } else {
-    initSpineModel();
+    window.addEventListener("load", scheduleSpineInit, { once: true });
   }
 </script>
