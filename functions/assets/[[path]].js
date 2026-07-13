@@ -18,6 +18,9 @@ export async function onRequest(context) {
   } catch (e) {
     // fall through to static fallback below
   }
-  if (next) return next();
-  return undefined;
+  try {
+    return await context.env.ASSETS.fetch(context.request);
+  } catch (e) {
+    return undefined;
+  }
 }

@@ -19,6 +19,9 @@ export async function onRequest(context) {
     // fall through to static fallback below
   }
   // R2 miss/error -> serve the static copy on Pages (if present)
-  if (next) return next();
-  return undefined;
+  try {
+    return await context.env.ASSETS.fetch(context.request);
+  } catch (e) {
+    return undefined;
+  }
 }
