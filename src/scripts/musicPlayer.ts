@@ -1,0 +1,871 @@
+// AUTO-GENERATED from MusicPlayer.astro is:inline script (perf optimization B)
+// 由 scripts/extract-music-player.mjs 生成。请勿手动编辑，改 MusicPlayer.astro 后重跑脚本。
+// 该模块被打包一次，所有 MusicPlayer 实例共享。
+
+export function initMusicPlayer(widget, cfg) {
+    var widgetId = (widget && widget.getAttribute('data-widget-id')) || '';
+    if (!widget) return;
+
+    var mgr = window.__fireflyMusic;
+    if (!mgr) return;
+
+    // ── UI element refs ──────────────────────────────────────
+    var ui = {
+        widget: widget,
+        loading: widget.querySelector('.music-loading'),
+        cover: widget.querySelector('.music-cover'),
+        title: widget.querySelector('.music-title'),
+        artist: widget.querySelector('.music-artist'),
+        progressBar: widget.querySelector('.progress-bar'),
+        progressThumb: widget.querySelector('.progress-thumb'),
+        progressContainer: widget.querySelector('.progress-container'),
+        currentTime: widget.querySelector('.current-time'),
+        totalTime: widget.querySelector('.total-time'),
+        btnPlay: widget.querySelector('.btn-play'),
+        iconPlay: widget.querySelector('.icon-play'),
+        iconPause: widget.querySelector('.icon-pause'),
+        btnPrev: widget.querySelector('.btn-prev'),
+        btnNext: widget.querySelector('.btn-next'),
+        btnRepeat: widget.querySelector('.btn-repeat'),
+        iconRepeat: widget.querySelector('.icon-repeat'),
+        iconRepeatOne: widget.querySelector('.icon-repeat-one'),
+        iconShuffle: widget.querySelector('.icon-shuffle'),
+        btnMute: widget.querySelector('.btn-mute'),
+        iconVolHigh: widget.querySelector('.icon-vol-high'),
+        iconVolMute: widget.querySelector('.icon-vol-mute'),
+        volContainer: widget.querySelector('.vol-container'),
+        volBar: widget.querySelector('.vol-bar'),
+        btnLrc: widget.querySelector('.btn-lrc-toggle'),
+        iconLrcOn: widget.querySelector('.icon-lrc-on'),
+        iconLrcOff: widget.querySelector('.icon-lrc-off'),
+        lrcDrawer: widget.querySelector('.lrc-drawer'),
+        lrcContainer: widget.querySelector('.lrc-container'),
+        btnDrawer: widget.querySelector('.btn-drawer-toggle'),
+        playlistDrawer: widget.querySelector('.playlist-drawer'),
+        playlistContainer: widget.querySelector('.playlist-container'),
+        playlistTabs: widget.querySelector('.playlist-tabs'),
+        searchInput: widget.querySelector('.playlist-search-input'),
+        searchClear: widget.querySelector('.search-clear-btn'),
+        searchEmpty: widget.querySelector('.search-empty'),
+        itemTemplate: document.getElementById('playlist-item-template-' + widgetId)
+    };
+
+    // Verify critical elements
+    var _critical = [ui.btnPlay, ui.btnRepeat, ui.btnMute, ui.volContainer,
+        ui.btnDrawer, ui.btnLrc, ui.lrcDrawer, ui.lrcContainer,
+        ui.progressContainer, ui.btnNext, ui.btnPrev, ui.loading,
+        ui.cover, ui.title, ui.artist, ui.playlistContainer, ui.itemTemplate];
+    if (_critical.some(function(el) { return !el; })) return;
+
+    // ── Local state (drawers, user scrolling, virtual scroll) ──
+    var ITEM_H = 42;
+    var OVERSCAN = 8;
+    var local = {
+        isUserScrolling: false,
+        scrollTimeout: null,
+        currentLrcIndex: -1,
+        activePlaylistId: null,  // currently selected playlist tab
+        searchQuery: '',         // current search filter text
+        vs: {
+            playlist: [],        // full unfiltered list
+            filteredIndices: [], // indices into vs.playlist that match search
+            currentIndex: -1,
+            renderedStart: -1,
+            renderedEnd: -1,
+            renderedEls: {},
+            scrollRaf: 0,
+            drawerOpen: false
+        }
+    };
+
+    // ── Playlist Tabs & Search ──────────────────────────────
+    function renderPlaylistTabs() {
+        if (!ui.playlistTabs || !cfg.playlists || cfg.playlists.length === 0) return;
+
+        var tabsHtml = '';
+        cfg.playlists.forEach(function (pl, idx) {
+            var isActive = (local.activePlaylistId === pl.id) ||
+                (!local.activePlaylistId && idx === 0);
+            var activeClass = isActive
+                ? 'bg-(--primary) text-white border-(--primary)'
+                : 'bg-neutral-100 dark:bg-white/10 text-neutral-600 dark:text-neutral-400 border-transparent hover:bg-neutral-200 dark:hover:bg-white/20';
+            tabsHtml += '<button class="playlist-tab shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all duration-200 border ' + activeClass +
+                '" data-pl-id="' + pl.id + '" data-pl-server="' + (pl.server || 'netease') + '" data-pl-type="' + (pl.type || 'playlist') + '" role="tab" aria-selected="' + isActive + '">' +
+                '<span class="truncate max-w-[80px] inline-block">' + (pl.name || pl.id) + '</span></button>';
+        });
+        ui.playlistTabs.innerHTML = tabsHtml;
+
+        // Bind click events on tabs
+        ui.playlistTabs.querySelectorAll('.playlist-tab').forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                var plId = tab.getAttribute('data-pl-id');
+                var plServer = tab.getAttribute('data-pl-server');
+                var plType = tab.getAttribute('data-pl-type');
+                if (plId && plId !== local.activePlaylistId) {
+                    switchToPlaylist(plId, plServer, plType);
+                    // Update active tab UI
+                    ui.playlistTabs.querySelectorAll('.playlist-tab').forEach(function (t) {
+                        var isTarget = t.getAttribute('data-pl-id') === plId;
+                        t.classList.toggle('bg-(--primary)', isTarget);
+                        t.classList.toggle('text-white', isTarget);
+                        t.classList.toggle('border-(--primary)', isTarget);
+                        t.classList.toggle('bg-neutral-100', !isTarget);
+                        t.classList.toggle('dark:bg-white/10', !isTarget);
+                        t.classList.toggle('text-neutral-600', !isTarget);
+                        t.classList.toggle('dark:text-neutral-400', !isTarget);
+                        t.classList.toggle('border-transparent', !isTarget);
+                        t.setAttribute('aria-selected', String(isTarget));
+                    });
+                    // Scroll active tab into view if it's off-screen
+                    tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                }
+            });
+        });
+
+        // Wheel → horizontal scroll on tab bar (so mouse wheel scrolls left/right through playlists)
+        ui.playlistTabs.addEventListener('wheel', function (e) {
+            if (e.deltaY !== 0) {
+                e.preventDefault();
+                ui.playlistTabs.scrollLeft += e.deltaY;
+            }
+        }, { passive: false });
+    }
+
+    function switchToPlaylist(plId, server, type) {
+        local.activePlaylistId = plId;
+        local.searchQuery = '';  // clear search when switching playlists
+        if (ui.searchInput) ui.searchInput.value = '';
+        if (ui.searchClear) ui.searchClear.classList.add('hidden');
+
+        setLoading(true);
+        mgr.switchPlaylist(plId, server, type).then(function () {
+            // Playlist will be updated via fm:playlist-change event
+        });
+    }
+
+    function applySearchFilter() {
+        var query = local.searchQuery.toLowerCase().trim();
+        var fullList = local.vs.playlist;
+
+        if (!query) {
+            local.vs.filteredIndices = fullList.map(function (_, i) { return i; });
+        } else {
+            local.vs.filteredIndices = [];
+            for (var i = 0; i < fullList.length; i++) {
+                var item = fullList[i];
+                if ((item.name && item.name.toLowerCase().indexOf(query) !== -1) ||
+                    (item.artist && item.artist.toLowerCase().indexOf(query) !== -1)) {
+                    local.vs.filteredIndices.push(i);
+                }
+            }
+        }
+
+        // Re-render with filtered indices
+        local.vs.renderedStart = -1;
+        local.vs.renderedEnd = -1;
+        local.vs.renderedEls = {};
+        ui.playlistContainer.innerHTML = '';
+
+        // Show/hide empty state
+        if (ui.searchEmpty) {
+            ui.searchEmpty.classList.toggle('hidden', filteredCount > 0 || !local.searchQuery.trim());
+            ui.playlistContainer.style.display = (filteredCount === 0 && local.searchQuery.trim()) ? 'none' : '';
+        }
+
+        if (local.vs.drawerOpen && ui.playlistDrawer.style.gridTemplateRows === '1fr') {
+            vsSetContainerHeight();
+            vsCommitRange();
+        }
+    }
+
+    // Init search input handler
+    if (ui.searchInput) {
+        var searchTimer = null;
+        ui.searchInput.addEventListener('input', function () {
+            local.searchQuery = ui.searchInput.value;
+            // Show/hide clear button
+            if (ui.searchClear) {
+                ui.searchClear.classList.toggle('hidden', !local.searchQuery);
+            }
+            // Debounced filter
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(applySearchFilter, 200);
+        });
+        // Clear button
+        if (ui.searchClear) {
+            ui.searchClear.addEventListener('click', function () {
+                ui.searchInput.value = '';
+                local.searchQuery = '';
+                ui.searchClear.classList.add('hidden');
+                applySearchFilter();
+                ui.searchInput.focus();
+            });
+        }
+    }
+
+    // ── UI update functions ──────────────────────────────────
+    function setLoading(bool) {
+        if (bool) {
+            ui.loading.classList.remove('opacity-0', 'pointer-events-none');
+        } else {
+            ui.loading.classList.add('opacity-0', 'pointer-events-none');
+        }
+    }
+
+    function updatePlayStateUI(isPlaying) {
+        if (isPlaying) {
+            ui.btnPlay.classList.add('bg-(--primary)', 'text-white', 'hover:brightness-110');
+            ui.btnPlay.classList.remove('bg-(--btn-regular-bg)', 'hover:bg-(--btn-regular-bg-hover)', 'active:bg-(--btn-regular-bg-active)', 'text-(--primary)');
+            ui.iconPlay.classList.add('hidden');
+            ui.iconPause.classList.remove('hidden');
+            ui.cover.style.animationPlayState = 'running';
+            ui.btnPlay.setAttribute('aria-label', cfg.i18n.pause);
+            ui.btnPlay.title = cfg.i18n.pause;
+        } else {
+            ui.btnPlay.classList.remove('bg-(--primary)', 'text-white', 'hover:brightness-110');
+            ui.btnPlay.classList.add('bg-(--btn-regular-bg)', 'hover:bg-(--btn-regular-bg-hover)', 'active:bg-(--btn-regular-bg-active)', 'text-(--primary)');
+            ui.iconPlay.classList.remove('hidden');
+            ui.iconPause.classList.add('hidden');
+            ui.cover.style.animationPlayState = 'paused';
+            ui.btnPlay.setAttribute('aria-label', cfg.i18n.play);
+            ui.btnPlay.title = cfg.i18n.play;
+        }
+        // Toggle eq-bars / play icon in playlist
+        var activeItems = ui.playlistContainer.querySelectorAll('.playlist-item[aria-current="true"]');
+        activeItems.forEach(function (item) {
+            var eqBars = item.querySelector('.eq-bars');
+            var playIcon = item.querySelector('.eq-play-icon');
+            if (isPlaying) {
+                eqBars.classList.remove('hidden');
+                eqBars.classList.add('flex');
+                playIcon.classList.add('hidden');
+            } else {
+                eqBars.classList.add('hidden');
+                eqBars.classList.remove('flex');
+                playIcon.classList.remove('hidden');
+            }
+        });
+    }
+
+    function updateModeUI(playMode) {
+        var primaryColor = 'text-(--primary)';
+        if (playMode === 0) {
+            ui.btnRepeat.className = 'p-2 active:scale-95 transition-colors text-neutral-300 dark:text-neutral-600 hover:text-[var(--primary)]';
+            ui.iconRepeat.classList.remove('hidden');
+            ui.iconRepeatOne.classList.add('hidden');
+            ui.iconShuffle.classList.add('hidden');
+        } else if (playMode === 1) {
+            ui.btnRepeat.className = 'p-2 active:scale-95 transition-colors ' + primaryColor;
+            ui.iconRepeat.classList.add('hidden');
+            ui.iconRepeatOne.classList.remove('hidden');
+            ui.iconShuffle.classList.add('hidden');
+        } else {
+            ui.btnRepeat.className = 'p-2 active:scale-95 transition-colors ' + primaryColor;
+            ui.iconRepeat.classList.add('hidden');
+            ui.iconRepeatOne.classList.add('hidden');
+            ui.iconShuffle.classList.remove('hidden');
+        }
+    }
+
+    function updateVolumeUI(volume, isMuted) {
+        var pct = isMuted ? 0 : volume * 100;
+        ui.volBar.style.width = pct + '%';
+        ui.volContainer.setAttribute('aria-valuenow', Math.round(pct).toString());
+        if (isMuted || volume === 0) {
+            ui.iconVolHigh.classList.add('hidden');
+            ui.iconVolMute.classList.remove('hidden');
+        } else {
+            ui.iconVolHigh.classList.remove('hidden');
+            ui.iconVolMute.classList.add('hidden');
+        }
+    }
+
+    function updateTrackUI(track) {
+        if (!track) return;
+        ui.title.innerText = track.name;
+        ui.title.title = track.name;
+        ui.artist.innerText = track.artist;
+        ui.artist.title = track.artist;
+
+        if (track.pic) {
+            ui.cover.classList.add('opacity-0');
+            ui.cover.src = track.pic;
+            ui.cover.alt = track.name + ' - ' + track.artist;
+        } else {
+            ui.cover.src = '';
+            ui.cover.classList.add('opacity-0');
+            ui.cover.alt = cfg.i18n.noCover;
+        }
+
+        // Reset cover rotation - use rAF instead of forced reflow to avoid layout thrashing
+        ui.cover.classList.remove('animate-spin-slow');
+        requestAnimationFrame(() => {
+            ui.cover.classList.add('animate-spin-slow');
+        });
+        ui.cover.style.animationPlayState = 'paused';
+
+        // Reset progress
+        ui.progressBar.style.width = '0%';
+        ui.progressThumb.style.left = '0%';
+        ui.progressContainer.setAttribute('aria-valuenow', '0');
+        ui.currentTime.innerText = '0:00';
+        ui.totalTime.innerText = '0:00';
+    }
+
+    // ── Virtual scroll helpers (absolute-position based) ──────
+    var PRIMARY_COLOR = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#6366f1';
+
+    function vsApplyActiveStyle(el, isActive) {
+        var overlay = el.querySelector('.item-active-overlay');
+        var title = el.querySelector('.item-title');
+        var eqBars = el.querySelector('.eq-bars');
+        var playIcon = el.querySelector('.eq-play-icon');
+        var isPlaying = mgr.getState().isPlaying;
+        if (isActive) {
+            el.classList.add('bg-neutral-100', 'dark:bg-white/10');
+            el.setAttribute('aria-current', 'true');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            title.style.color = PRIMARY_COLOR;
+            if (isPlaying) {
+                eqBars.classList.remove('hidden');
+                eqBars.classList.add('flex');
+                playIcon.classList.add('hidden');
+            } else {
+                eqBars.classList.add('hidden');
+                eqBars.classList.remove('flex');
+                playIcon.classList.remove('hidden');
+            }
+        } else {
+            el.classList.remove('bg-neutral-100', 'dark:bg-white/10');
+            el.removeAttribute('aria-current');
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+            title.style.color = '';
+        }
+    }
+
+    function vsCreateItemEl(displayIdx) {
+        var vs = local.vs;
+        // displayIdx is position in filtered view; realIdx is into full playlist
+        var realIdx = vs.filteredIndices[displayIdx];
+        if (realIdx === undefined) return null;
+        var track = vs.playlist[realIdx];
+        var clone = ui.itemTemplate.content.cloneNode(true);
+        var itemEl = clone.querySelector('.playlist-item');
+        var img = clone.querySelector('.item-cover');
+        var title = clone.querySelector('.item-title');
+        var artist = clone.querySelector('.item-artist');
+
+        img.src = track.pic || '';
+        img.alt = track.name + ' - ' + track.artist;
+        title.innerText = track.name;
+        artist.innerText = track.artist;
+
+        itemEl.dataset.index = String(realIdx);  // store real index for click
+        itemEl.dataset.displayIndex = String(displayIdx);
+        itemEl.setAttribute('role', 'option');
+        itemEl.setAttribute('aria-label', track.name + ' - ' + track.artist);
+        itemEl.onclick = function () { mgr.playTrackByIndex(realIdx); };
+
+        // Absolute positioning for virtual scroll (use displayIdx for visual position)
+        itemEl.style.position = 'absolute';
+        itemEl.style.left = '0';
+        itemEl.style.right = '0';
+        itemEl.style.top = (displayIdx * ITEM_H) + 'px';
+        itemEl.style.height = ITEM_H + 'px';
+
+        if (realIdx === vs.currentIndex) {
+            vsApplyActiveStyle(itemEl, true);
+        }
+        return clone;
+    }
+
+    function vsCommitRange() {
+        var vs = local.vs;
+        var filteredCount = vs.filteredIndices.length;
+        if (vs.playlist.length === 0 || !vs.drawerOpen || filteredCount === 0) return;
+
+        var container = ui.playlistContainer;
+        var scrollTop = container.scrollTop;
+        var viewHeight = container.clientHeight;
+        var start = Math.max(0, Math.floor(scrollTop / ITEM_H) - OVERSCAN);
+        var end = Math.min(filteredCount, Math.ceil((scrollTop + viewHeight) / ITEM_H) + OVERSCAN);
+
+        if (start === vs.renderedStart && end === vs.renderedEnd) return;
+
+        if (vs.renderedStart === -1) {
+            // First render: batch via fragment
+            var frag = document.createDocumentFragment();
+            for (var i = start; i < end; i++) {
+                var el = vsCreateItemEl(i);
+                if (el) frag.appendChild(el);
+            }
+            container.appendChild(frag);
+        } else {
+            // Incremental: remove out-of-range, add new items
+            var oldEls = vs.renderedEls;
+            for (var ri = vs.renderedStart; ri < vs.renderedEnd; ri++) {
+                if (ri < start || ri >= end) {
+                    if (oldEls[ri]) { oldEls[ri].remove(); delete oldEls[ri]; }
+                }
+            }
+            for (var ai = start; ai < end; ai++) {
+                if (!oldEls[ai]) {
+                    var newEl = vsCreateItemEl(ai);
+                    if (!newEl) continue;
+                    var inserted = false;
+                    for (var ni = ai + 1; ni < end; ni++) {
+                        if (oldEls[ni]) {
+                            container.insertBefore(newEl, oldEls[ni]);
+                            inserted = true;
+                            break;
+                        }
+                    }
+                    if (!inserted) container.appendChild(newEl);
+                    oldEls[ai] = newEl;
+                }
+            }
+        }
+
+        // Rebuild reference map (keyed by display index)
+        vs.renderedEls = {};
+        var children = container.children;
+        for (var ci = 0; ci < children.length; ci++) {
+            var dIdx = parseInt(children[ci].dataset.displayIndex);
+            if (!isNaN(dIdx)) vs.renderedEls[dIdx] = children[ci];
+        }
+
+        vs.renderedStart = start;
+        vs.renderedEnd = end;
+    }
+
+    function vsRequestUpdate() {
+        var vs = local.vs;
+        if (vs.scrollRaf) return;
+        vs.scrollRaf = requestAnimationFrame(function () {
+            vs.scrollRaf = 0;
+            vsCommitRange();
+        });
+    }
+
+    function vsSetContainerHeight() {
+        ui.playlistContainer.style.height = (local.vs.filteredIndices.length * ITEM_H) + 'px';
+    }
+
+    function renderPlaylist(playlist, currentIndex) {
+        var vs = local.vs;
+        vs.playlist = playlist;
+        // Initialize full filter (no search = show all)
+        vs.filteredIndices = playlist.map(function (_, i) { return i; });
+        vs.currentIndex = currentIndex;
+        vs.renderedStart = -1;
+        vs.renderedEnd = -1;
+        vs.renderedEls = {};
+        vs.drawerOpen = ui.playlistDrawer.style.gridTemplateRows === '1fr';
+        ui.playlistContainer.innerHTML = '';
+        if (vs.drawerOpen) {
+            vsSetContainerHeight();
+            vsCommitRange();
+        }
+    }
+
+    function updatePlaylistActiveUI(currentIndex) {
+        var vs = local.vs;
+        var oldIndex = vs.currentIndex;
+        vs.currentIndex = currentIndex;
+
+        // Deactivate old (by real index, search in renderedEls values)
+        // Note: renderedEls is keyed by display index now
+        Object.keys(vs.renderedEls).forEach(function (dIdx) {
+            var el = vs.renderedEls[dIdx];
+            if (el && parseInt(el.dataset.index) === oldIndex) {
+                vsApplyActiveStyle(el, false);
+            }
+        });
+
+        if (currentIndex >= 0 && currentIndex < vs.playlist.length) {
+            // Find display index for this real index
+            var displayIdx = vs.filteredIndices.indexOf(currentIndex);
+            if (displayIdx >= 0) {
+                if (displayIdx < vs.renderedStart || displayIdx >= vs.renderedEnd) {
+                    ui.playlistContainer.scrollTop = displayIdx * ITEM_H;
+                    vsCommitRange();
+                }
+                if (vs.renderedEls[displayIdx]) {
+                    vsApplyActiveStyle(vs.renderedEls[displayIdx], true);
+                }
+            }
+        }
+    }
+
+    function renderLyricsUI(lyrics, status) {
+        local.currentLrcIndex = -1;
+        ui.lrcContainer.innerHTML = '';
+        if (status === 'loading') {
+            ui.lrcContainer.innerHTML = '<div class="text-neutral-400 text-sm py-10">' + cfg.i18n.loadingLyrics + '</div>';
+            return;
+        }
+        if (status === 'failed') {
+            ui.lrcContainer.innerHTML = '<div class="text-neutral-400 text-sm py-10">' + cfg.i18n.failedLyrics + '</div>';
+            return;
+        }
+        if (!lyrics || lyrics.length === 0) {
+            ui.lrcContainer.innerHTML = '<div class="text-neutral-400 text-sm py-10" role="option">' + cfg.i18n.noLyrics + '</div>';
+            return;
+        }
+        lyrics.forEach(function (line, index) {
+            var lineEl = document.createElement('div');
+            lineEl.className = 'lrc-line transition-all duration-300 text-sm text-neutral-400 py-1 cursor-pointer hover:text-(--primary)';
+            lineEl.innerText = line.text;
+            lineEl.dataset.index = index;
+            lineEl.setAttribute('role', 'option');
+            lineEl.setAttribute('aria-label', line.text);
+            lineEl.onclick = function () {
+                mgr.seekToTime(line.time);
+            };
+            ui.lrcContainer.appendChild(lineEl);
+        });
+    }
+
+    function updateLrcHighlight(index) {
+        if (index === local.currentLrcIndex) return;
+        local.currentLrcIndex = index;
+
+        var lines = ui.lrcContainer.querySelectorAll('.lrc-line');
+        lines.forEach(function (line, i) {
+            if (i === index) {
+                line.classList.add('text-(--primary)', 'font-bold', 'text-base');
+                line.classList.remove('text-neutral-400', 'text-sm');
+            } else {
+                line.classList.remove('text-(--primary)', 'font-bold', 'text-base');
+                line.classList.add('text-neutral-400', 'text-sm');
+            }
+        });
+
+        // Auto-scroll unless user is scrolling
+        if (index !== -1 && !local.isUserScrolling) {
+            var line = ui.lrcContainer.querySelector('.lrc-line[data-index="' + index + '"]');
+            if (line) {
+                var containerHeight = ui.lrcContainer.clientHeight;
+                var lineOffset = line.offsetTop;
+                var lineHeight = line.offsetHeight;
+                var targetScroll = lineOffset - (containerHeight / 2) + (lineHeight / 2);
+                ui.lrcContainer.scrollTo({ top: targetScroll, behavior: 'smooth' });
+            }
+        }
+    }
+
+    // ── Full sync from manager state (for late-mount) ────────
+    function syncAll() {
+        var s = mgr.getState();
+        if (!s.initialized) return;
+
+        // Loading off
+        setLoading(false);
+
+        if (s.playlist.length === 0) {
+            ui.title.innerText = s.error || cfg.i18n.noSongs;
+            return;
+        }
+
+        renderPlaylist(s.playlist, s.currentIndex);
+        if (s.track) updateTrackUI(s.track);
+        updatePlayStateUI(s.isPlaying);
+        updateModeUI(s.playMode);
+        updateVolumeUI(s.volume, s.isMuted);
+
+        // Progress
+        if (s.duration > 0) {
+            ui.progressBar.style.width = s.progress + '%';
+            ui.progressThumb.style.left = s.progress + '%';
+            ui.progressContainer.setAttribute('aria-valuenow', Math.round(s.progress).toString());
+            ui.currentTime.innerText = s.currentTimeStr;
+            ui.totalTime.innerText = s.durationStr;
+        }
+
+        // Lyrics
+        renderLyricsUI(s.lyrics, s.lyrics.length > 0 ? 'loaded' : 'none');
+        if (s.currentLrcIndex >= 0) updateLrcHighlight(s.currentLrcIndex);
+
+        // Cover image: if already set, show it
+        if (s.track && s.track.pic && ui.cover.src && ui.cover.complete && ui.cover.naturalWidth > 0) {
+            ui.cover.classList.remove('opacity-0');
+        }
+        // Update cover animation state to match play state
+        ui.cover.style.animationPlayState = s.isPlaying ? 'running' : 'paused';
+    }
+
+    // ── Event listeners (fm:* from manager) ──────────────────
+    var handlers = {};
+
+    function on(name, fn) {
+        handlers[name] = fn;
+        window.addEventListener(name, fn);
+    }
+
+    on('fm:init', function (e) {
+        var d = e.detail;
+        setLoading(false);
+        if (d.playlist.length > 0) {
+            renderPlaylist(d.playlist, 0);
+            updateModeUI(d.playMode);
+            updateVolumeUI(d.volume, d.isMuted);
+        } else {
+            ui.title.innerText = cfg.i18n.noSongs;
+        }
+    });
+    
+    // Listen for playlist change from GlobalAudio
+    on('fm:playlist-change', function (e) {
+        var d = e.detail;
+        if (d.playlist && d.playlist.length > 0) {
+            // Update local virtual scroll playlist
+            var vs = local.vs;
+            vs.playlist = d.playlist;
+            vs.currentIndex = 0; // Reset to first song
+            vs.filteredIndices = d.playlist.map(function (_, i) { return i; }); // clear any stale search filter
+
+            // Re-render playlist
+            ui.playlistContainer.innerHTML = '';
+            vs.renderedStart = -1;
+            vs.renderedEnd = -1;
+            vs.renderedEls = {};
+            vsSetContainerHeight();
+            
+            // Always commit range to show new playlist
+            vsCommitRange();
+            
+            // Update first track info
+            if (d.playlist[0]) {
+                updateTrackUI(d.playlist[0]);
+            }
+        }
+    });
+
+    on('fm:track', function (e) {
+        var d = e.detail;
+        
+        // 更新歌曲信息（使用传入的 track 数据）
+        updateTrackUI(d.track);
+        
+        // 根据歌曲 URL 查找侧边栏播放列表中的对应索引
+        var vs = local.vs;
+        var matchedIndex = -1;
+        if (d.track && d.track.url && vs.playlist) {
+            for (var i = 0; i < vs.playlist.length; i++) {
+                if (vs.playlist[i].url === d.track.url) {
+                    matchedIndex = i;
+                    break;
+                }
+            }
+        }
+        
+        // 如果找到了匹配的歌曲，更新播放列表激活状态
+        if (matchedIndex >= 0) {
+            updatePlaylistActiveUI(matchedIndex);
+        }
+    });
+
+    on('fm:play-state', function (e) {
+        updatePlayStateUI(e.detail.isPlaying);
+    });
+
+    on('fm:time', function (e) {
+        var d = e.detail;
+        ui.progressBar.style.width = d.progress + '%';
+        ui.progressThumb.style.left = d.progress + '%';
+        ui.progressContainer.setAttribute('aria-valuenow', Math.round(d.progress).toString());
+        ui.currentTime.innerText = d.currentTimeStr;
+        ui.totalTime.innerText = d.durationStr;
+    });
+
+    on('fm:volume', function (e) {
+        updateVolumeUI(e.detail.volume, e.detail.isMuted);
+    });
+
+    on('fm:mode', function (e) {
+        updateModeUI(e.detail.playMode);
+    });
+
+    on('fm:lyrics', function (e) {
+        renderLyricsUI(e.detail.lyrics, e.detail.status);
+    });
+
+    on('fm:lrc-index', function (e) {
+        updateLrcHighlight(e.detail.index);
+    });
+
+    on('fm:error', function (e) {
+        setLoading(false); // ensure overlay never gets stuck on failure
+        ui.title.innerText = e.detail.message || cfg.i18n.error;
+    });
+
+    // Drive loading overlay from manager's fm:loading events (covers switch + init)
+    on('fm:loading', function (e) {
+        setLoading(!!e.detail.loading);
+    });
+
+    // ── Button click delegates ───────────────────────────────
+    ui.btnPlay.addEventListener('click', function () { mgr.togglePlay(); });
+    ui.btnNext.addEventListener('click', function () { mgr.playNext(); });
+    ui.btnPrev.addEventListener('click', function () { mgr.playPrev(); });
+    ui.btnRepeat.addEventListener('click', function () { mgr.cyclePlayMode(); });
+    ui.btnMute.addEventListener('click', function () { mgr.toggleMute(); });
+
+    ui.volContainer.addEventListener('click', function (e) {
+        var rect = ui.volContainer.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var val = Math.max(0, Math.min(1, x / rect.width));
+        mgr.setVolume(val);
+    });
+
+    ui.progressContainer.addEventListener('click', function (e) {
+        var rect = ui.progressContainer.getBoundingClientRect();
+        var clickX = e.clientX - rect.left;
+        var percent = Math.min(Math.max(clickX / rect.width, 0), 1);
+        mgr.seek(percent);
+    });
+
+    // ── Drawer logic (local state) ───────────────────────────
+    ui.btnLrc.addEventListener('click', function () {
+        var isOpen = ui.lrcDrawer.style.gridTemplateRows === '1fr';
+        if (isOpen) {
+            ui.lrcDrawer.style.gridTemplateRows = '0fr';
+            ui.lrcDrawer.classList.remove('opacity-100');
+            ui.lrcDrawer.classList.add('opacity-0');
+            ui.btnLrc.classList.remove('text-(--primary)');
+            ui.btnLrc.classList.add('text-neutral-400');
+            ui.iconLrcOn.classList.add('hidden');
+            ui.iconLrcOff.classList.remove('hidden');
+        } else {
+            // Close playlist if open
+            ui.playlistDrawer.style.gridTemplateRows = '0fr';
+            ui.playlistDrawer.classList.remove('opacity-100');
+            ui.playlistDrawer.classList.add('opacity-0');
+            ui.btnDrawer.classList.remove('text-(--primary)');
+            ui.btnDrawer.classList.add('text-neutral-400');
+
+            ui.lrcDrawer.style.gridTemplateRows = '1fr';
+            ui.lrcDrawer.classList.add('opacity-100');
+            ui.lrcDrawer.classList.remove('opacity-0');
+            ui.btnLrc.classList.add('text-(--primary)');
+            ui.btnLrc.classList.remove('text-neutral-400');
+            ui.iconLrcOn.classList.remove('hidden');
+            ui.iconLrcOff.classList.add('hidden');
+        }
+    });
+
+    ui.btnDrawer.addEventListener('click', function () {
+        var isOpen = ui.playlistDrawer.style.gridTemplateRows === '1fr';
+        if (isOpen) {
+            ui.playlistDrawer.style.gridTemplateRows = '0fr';
+            ui.playlistDrawer.classList.remove('opacity-100');
+            ui.playlistDrawer.classList.add('opacity-0');
+            ui.btnDrawer.classList.add('text-neutral-400');
+            ui.btnDrawer.classList.remove('text-(--primary)');
+            local.vs.drawerOpen = false;
+        } else {
+            // Close lyrics if open
+            ui.lrcDrawer.style.gridTemplateRows = '0fr';
+            ui.lrcDrawer.classList.remove('opacity-100');
+            ui.lrcDrawer.classList.add('opacity-0');
+            ui.btnLrc.classList.remove('text-(--primary)');
+            ui.btnLrc.classList.add('text-neutral-400');
+            ui.iconLrcOn.classList.add('hidden');
+            ui.iconLrcOff.classList.remove('hidden');
+
+            ui.playlistDrawer.style.gridTemplateRows = '1fr';
+            ui.playlistDrawer.classList.add('opacity-100');
+            ui.playlistDrawer.classList.remove('opacity-0');
+            ui.btnDrawer.classList.remove('text-neutral-400');
+            ui.btnDrawer.classList.add('text-(--primary)');
+            local.vs.drawerOpen = true;
+
+            // Render playlist after drawer transition settles
+            if (local.vs.playlist.length > 0) {
+                requestAnimationFrame(function () {
+                    vsSetContainerHeight();
+                    vsCommitRange();
+                });
+            }
+        }
+    });
+
+    // ── Playlist virtual scroll listener ──────────────────────
+    ui.playlistContainer.addEventListener('scroll', function () {
+        vsRequestUpdate();
+    });
+
+    // ── Lyrics user scroll detection ─────────────────────────
+    function resetScrollTimeout() {
+        clearTimeout(local.scrollTimeout);
+        local.scrollTimeout = setTimeout(function () {
+            local.isUserScrolling = false;
+            // Snap back to current lyric
+            var s = mgr.getState();
+            if (s.currentLrcIndex >= 0) {
+                var line = ui.lrcContainer.querySelector('.lrc-line[data-index="' + s.currentLrcIndex + '"]');
+                if (line) {
+                    var containerHeight = ui.lrcContainer.clientHeight;
+                    var lineOffset = line.offsetTop;
+                    var lineHeight = line.offsetHeight;
+                    var targetScroll = lineOffset - (containerHeight / 2) + (lineHeight / 2);
+                    ui.lrcContainer.scrollTo({ top: targetScroll, behavior: 'auto' });
+                }
+            }
+        }, 3000);
+    }
+
+    ui.lrcContainer.addEventListener('wheel', function () {
+        local.isUserScrolling = true;
+        resetScrollTimeout();
+    });
+    ui.lrcContainer.addEventListener('touchstart', function () {
+        local.isUserScrolling = true;
+        resetScrollTimeout();
+    });
+
+    // ── Cover image events ───────────────────────────────────
+    ui.cover.addEventListener('load', function () {
+        ui.cover.classList.remove('opacity-0');
+    });
+    ui.cover.addEventListener('error', function () {
+        ui.cover.classList.add('opacity-0');
+    });
+
+    // ── Cleanup on DOM removal ───────────────────────────────
+    var observer = new MutationObserver(function (mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+            var removed = mutations[i].removedNodes;
+            for (var j = 0; j < removed.length; j++) {
+                if (removed[j] === widget || (removed[j].contains && removed[j].contains(widget))) {
+                    // Widget removed from DOM – clean up event listeners
+                    Object.keys(handlers).forEach(function (name) {
+                        window.removeEventListener(name, handlers[name]);
+                    });
+                    observer.disconnect();
+                    clearTimeout(local.scrollTimeout);
+                    return;
+                }
+            }
+        }
+    });
+    if (widget.parentNode) {
+        observer.observe(widget.parentNode, { childList: true });
+    }
+
+    // ── Init: either sync existing state or trigger init ─────
+    var currentState = mgr.getState();
+    if (currentState.initialized) {
+        // Manager already initialized (late mount) – sync all UI
+        syncAll();
+    } else {
+        // First widget to mount – show loading and trigger init
+        setLoading(true);
+        mgr.init();
+    }
+
+    // Render playlist tabs if playlists configured
+    renderPlaylistTabs();
+}

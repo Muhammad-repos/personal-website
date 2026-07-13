@@ -2,8 +2,7 @@
 import { musicPlayerConfig } from "@/config/musicConfig";
 import { musicList } from "@/data/music";
 
-// 默认播放第一首
-const initialPlaylist = JSON.stringify(musicList);
+// 默认播放第一首（仅取首曲封面，避免内联整份歌单）
 const initialSong = musicList[0] || {};
 const showMini = musicPlayerConfig.showMiniPlayer ?? false;
 ---
@@ -63,11 +62,11 @@ const showMini = musicPlayerConfig.showMiniPlayer ?? false;
     )}
 </div>
 
-<script define:vars={{ initialPlaylist }} is:inline>
+<script is:inline>
     class GlobalMusicPlayer {
         constructor() {
             // First time init: assume elements are present
-            this.playlist = JSON.parse(initialPlaylist);
+            this.playlist = []; // 歌单改为运行时按需 fetch（见 _loadPlaylist）
             this.currentIndex = 0;
             this.isPlaying = false;
             this.isShuffle = false;
@@ -88,14 +87,13 @@ const showMini = musicPlayerConfig.showMiniPlayer ?? false;
             this.BATCH_SIZE = 100;
             this.renderedCount = 0; // Number of songs currently rendered in DOM
             this._lazyLoadObserver = null; // IntersectionObserver for lazy loading
+            this._playlistLoaded = false; // 歌单是否已异步加载完成
 
             // Initial binding
             this.handlePageLoad();
 
-            // Load initial song if needed
-            if (this.playlist.length > 0 && this.audio && !this.audio.src) {
-               this.loadSong(0, false);
-            }
+            // 歌单改为运行时按需加载（避免 190KB 内联进每个页面 HTML）
+            this._loadPlaylist();
 
             // NOTE: The main player control buttons (#play-btn / #prev-btn / #next-btn /
             // #shuffle-btn / #repeat-btn) are bound once in _bindMainPlayer -> bindUIEvents().
@@ -284,6 +282,35 @@ const showMini = musicPlayerConfig.showMiniPlayer ?? false;
                 // index is the lyric line index (0, 1, 2...), not time
                 this.highlightLyricLine(index);
             });
+        }
+
+        _loadPlaylist() {
+            if (this._playlistLoaded) return;
+            this._playlistLoaded = true;
+            const url = '/assets/music/playlist.json';
+            fetch(url)
+                .then((r) => (r.ok ? r.json() : Promise.reject(new Error('playlist http ' + r.status))))
+                .then((data) => {
+                    const list = Array.isArray(data) ? data : (data && data.songs) || [];
+                    this.playlist = list;
+                    this.playlistCounts = Array.isArray(data) ? {} : (data.playlistCounts || {});
+                    this.playlistSongs = Array.isArray(data) ? {} : (data.playlistSongs || {});
+                    if (this.playlist.length > 0) {
+                        if (this.audio && !this.audio.src) this.loadSong(0, false);
+                        window.dispatchEvent(new CustomEvent('fm:playlist-change', {
+                            detail: {
+                                playlist: this.playlist.map((s) => ({
+                                    name: s.title || s.name || 'Unknown',
+                                    artist: s.artist || 'Unknown',
+                                    url: s.url,
+                                    pic: s.cover || s.pic || '',
+                                    lrc: s.lrc || undefined,
+                                })),
+                            },
+                        }));
+                    }
+                })
+                .catch((e) => console.error('[GlobalAudio] playlist load failed:', e));
         }
 
         handlePageLoad() {

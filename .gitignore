@@ -1,5 +1,7 @@
 # build output
 dist/
+# 构建生成的静态歌单（由 scripts/prepare-music-json.js 产出）
+public/assets/music/
 
 # generated types
 .astro/

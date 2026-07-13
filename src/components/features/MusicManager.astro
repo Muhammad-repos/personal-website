@@ -391,7 +391,7 @@ const managerConfigStr = JSON.stringify({
             if (shouldSyncWithGlobal) {
                 // Wait up to 2 seconds for GlobalAudio to be ready
                 let waitTime = 0;
-                while (!window.globalMusicPlayer && waitTime < 2000) {
+                while ((!window.globalMusicPlayer || !window.globalMusicPlayer.playlist || window.globalMusicPlayer.playlist.length === 0) && waitTime < 2000) {
                     await new Promise(resolve => setTimeout(resolve, 100));
                     waitTime += 100;
                 }
